@@ -201,6 +201,10 @@ It forecasts **risk**, not actions.
 ## How to Run
 
 ```bash
+
+#0. Syncing ACLED files
+python src/bluelance/sync_raw.py
+
 # 1. Combine regional ACLED files
 python src/bluelance/ingest.py
 
