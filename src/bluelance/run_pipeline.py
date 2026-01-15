@@ -2,6 +2,7 @@ import subprocess
 import sys
 
 STEPS = [
+    "src/bluelance/sync_raw.py",
     "src/bluelance/ingest.py",
     "src/bluelance/clean.py",
     "src/bluelance/features.py",
