@@ -60,6 +60,13 @@ predict.py  → reports/latest_risk_predictions_global.csv
 
 Each step is modular and can be rerun independently.
 
+
+
+## Running the entire Pipeline
+
+To execute everything from raw data to the predictions simply run
+
+python src/bluelance/run_pipeline.py
 ---
 
 ## 1. Ingestion (`ingest.py`)
