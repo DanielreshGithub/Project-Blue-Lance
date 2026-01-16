@@ -6,7 +6,7 @@ STEPS = [
     "src/bluelance/ingest.py",
     "src/bluelance/clean.py",
     "src/bluelance/features.py",
-    "src/bluelance/train.py",      # you named it train.py, not train_model.py
+    "src/bluelance/train.py",     
     "src/bluelance/predict.py",
 ]
 

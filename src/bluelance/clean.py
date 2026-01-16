@@ -8,7 +8,7 @@ def main():
     infile = INTERIM_DIR / "acled_global_weekly_raw.csv"
     df = pd.read_csv(infile)
 
-    # Standardize column names
+   
     df.columns = [c.strip().lower() for c in df.columns]
 
     # Parse week to datetime (ACLED weekly label format can vary; this is robust)
