@@ -8,18 +8,22 @@ def main():
     infile = PROCESSED / "acled_global_weekly_clean.csv"
     df = pd.read_csv(infile, parse_dates=["week"])
 
-    # 1) collapse to ONE row per region-week
+    # 1) Collapse to ONE row per region-week
     weekly = (
         df.groupby(["country", "admin1", "week"], as_index=False)
           .agg(
               total_events=("events", "sum"),
               total_fatalities=("fatalities", "sum"),
               population_exposure=("population_exposure", "max"),
+              centroid_latitude=("centroid_latitude", "mean"),
+              centroid_longitude=("centroid_longitude", "mean"),
           )
     )
 
-    # Sort for time features
-    weekly = weekly.sort_values(["country", "admin1", "week"]).reset_index(drop=True)
+    # Sort for time-based features
+    weekly = weekly.sort_values(
+        ["country", "admin1", "week"]
+    ).reset_index(drop=True)
 
     g = weekly.groupby(["country", "admin1"])
 
@@ -27,6 +31,7 @@ def main():
     weekly["events_4w_sum"] = g["total_events"].transform(
         lambda s: s.shift(1).rolling(window=4, min_periods=1).sum()
     )
+
     weekly["fatalities_4w_sum"] = g["total_fatalities"].transform(
         lambda s: s.shift(1).rolling(window=4, min_periods=1).sum()
     )
@@ -50,10 +55,20 @@ def main():
         else:
             return "high"
 
-    weekly["severity_label_next_week"] = weekly["fatalities_next_week"].apply(band_fatalities)
+    weekly["severity_label_next_week"] = weekly[
+        "fatalities_next_week"
+    ].apply(band_fatalities)
 
-    band_map = {"none": 0, "low": 1, "medium": 2, "high": 3}
-    weekly["severity_band_next_week"] = weekly["severity_label_next_week"].map(band_map)
+    band_map = {
+        "none": 0,
+        "low": 1,
+        "medium": 2,
+        "high": 3,
+    }
+
+    weekly["severity_band_next_week"] = weekly[
+        "severity_label_next_week"
+    ].map(band_map)
 
     out = PROCESSED / "acled_global_weekly_features.csv"
     weekly.to_csv(out, index=False)
