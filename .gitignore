@@ -16,3 +16,9 @@ data/interim/*
 data/processed/*
 data/external/*
 !data/**/.gitkeep
+
+# generated artifacts
+artifacts/
+data/downloads/
+reports/
+tmp
