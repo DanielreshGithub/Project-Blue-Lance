@@ -35,8 +35,9 @@ CACHE_JSON = INTERIM / "gdelt_country_cache.json"
 
 # ---- Tuning knobs ----
 MIN_SECONDS_BETWEEN_REQUESTS = 5.2   # bump to 6.0 if you still hit 429
-CHUNK_SIZE = 25                      # countries per run
-WINDOW_DAYS = 30                     # 30d window you validated
+CHUNK_SIZE = 25                      # work units per run (week-country pairs)
+WINDOW_DAYS = 30                     # rolling window length ending at each week_end
+NUM_WEEKS = 8                       # how many most-recent ACLED weeks to ingest
 MAX_RETRIES = 6
 
 # IMPORTANT: parentheses only around OR groups (GDELT rule)
@@ -300,30 +301,35 @@ def main() -> None:
     if "country" not in df.columns or "week" not in df.columns:
         raise ValueError("Expected columns ['week','country'] in ACLED features file")
 
-    latest_week = df["week"].max()
-    week_str = latest_week.date().isoformat()
-
-    countries: List[str] = sorted(
-        normalize_country(c)
-        for c in df.loc[df["week"] == latest_week, "country"].dropna().unique().tolist()
+    # ------------------------------------------------------------
+    # Build the target week list (last NUM_WEEKS ACLED weeks)
+    # ------------------------------------------------------------
+    weeks_sorted = (
+        df["week"].dropna().sort_values().drop_duplicates().to_list()
     )
+    if not weeks_sorted:
+        raise ValueError("No weeks found in ACLED file")
 
-    print(f"Latest ACLED week: {week_str}")
-    print(f"Countries: {len(countries):,}")
-    print(f"Window: last {WINDOW_DAYS} days ending at week_end")
+    target_weeks = weeks_sorted[-NUM_WEEKS:]
+
+    print(f"Weeks in ACLED: {len(weeks_sorted):,}")
+    print(f"Target weeks: last {len(target_weeks):,} (NUM_WEEKS={NUM_WEEKS})")
+    print(f"Window: last {WINDOW_DAYS} days ending at each week_end")
     print(f"Rate limit: {MIN_SECONDS_BETWEEN_REQUESTS}s/request")
-    print(f"Chunk size: {CHUNK_SIZE}")
+    print(f"Chunk size: {CHUNK_SIZE} work units")
     print(f"Output CSV: {OUT_CSV}\n")
 
-    # Anchor window to ACLED week end (midnight UTC)
-    end = datetime(latest_week.year, latest_week.month, latest_week.day, tzinfo=timezone.utc)
-    start = end - timedelta(days=WINDOW_DAYS)
-
+    # ------------------------------------------------------------
+    # Resumable progress:
+    # - week_index: which week in target_weeks
+    # - country_index: which country within that week
+    # ------------------------------------------------------------
     progress = load_json(PROGRESS_JSON)
-    start_idx = int(progress.get("country_index", 0))
+    start_week_idx = int(progress.get("week_index", 0))
+    start_country_idx = int(progress.get("country_index", 0))
 
-    done = load_json(DONE_JSON)   # {"Canada|2025-12-27|30d": true, ...}
-    cache = load_json(CACHE_JSON) # {"Canada|2025-12-27|30d|violence": 123, ...}
+    done = load_json(DONE_JSON)    # {"Canada|2025-12-27|30d": true, ...}
+    cache = load_json(CACHE_JSON)  # {"Canada|2025-12-27|30d|violence": 123, ...}
 
     session = requests.Session()
     session.headers.update({
@@ -332,49 +338,83 @@ def main() -> None:
 
     processed_this_run = 0
 
-    for i in range(start_idx, len(countries)):
-        country = countries[i]
-        dkey = done_key(country, week_str, WINDOW_DAYS)
+    # ------------------------------------------------------------
+    # Outer loop: weeks (most recent last)
+    # Inner loop: countries present in that week
+    # ------------------------------------------------------------
+    for w_i in range(start_week_idx, len(target_weeks)):
+        week_end = pd.to_datetime(target_weeks[w_i])
+        week_str = week_end.date().isoformat()
 
-        if done.get(dkey) is True:
-            print(f"SKIP {country} (already done)")
-        else:
-            print(f"FETCH {country}")
+        # Countries present in ACLED for this week (keeps work bounded)
+        week_countries: List[str] = sorted(
+            normalize_country(c)
+            for c in df.loc[df["week"] == week_end, "country"].dropna().unique().tolist()
+        )
 
-            row: Dict[str, Any] = {
-                "country": country,
-                "week": week_str,
-                "window_days": WINDOW_DAYS,
-            }
+        if not week_countries:
+            # Still advance progress if a week has no countries for some reason
+            save_json(PROGRESS_JSON, {"week_index": w_i + 1, "country_index": 0})
+            continue
 
-            for topic_name, topic_query in TOPICS.items():
-                ckey = cache_key(country, week_str, WINDOW_DAYS, topic_name)
+        # Anchor window to this ACLED week end (midnight UTC)
+        end = datetime(week_end.year, week_end.month, week_end.day, tzinfo=timezone.utc)
+        start = end - timedelta(days=WINDOW_DAYS)
 
-                if ckey in cache:
-                    count = int(cache[ckey])
-                else:
-                    count = fetch_country_topic_count(session, country, topic_query, start, end)
-                    cache[ckey] = int(count)
-                    save_json(CACHE_JSON, cache)  # Ctrl+C safe
+        # If we just advanced to a new week, reset country index
+        c_start = start_country_idx if w_i == start_week_idx else 0
 
-                row[f"gdelt_{topic_name}_count_{WINDOW_DAYS}d"] = int(count)
-                print(f"  {topic_name}: {count}")
+        print(f"\n=== WEEK {w_i+1}/{len(target_weeks)}: {week_str} ===")
+        print(f"Countries this week: {len(week_countries):,} | resume at index {c_start}\n")
 
-            append_row(row)
+        for c_i in range(c_start, len(week_countries)):
+            country = week_countries[c_i]
+            dkey = done_key(country, week_str, WINDOW_DAYS)
 
-            done[dkey] = True
-            save_json(DONE_JSON, done)
+            if done.get(dkey) is True:
+                # Already computed for this week
+                pass
+            else:
+                print(f"FETCH {country} ({week_str})")
 
-        processed_this_run += 1
+                row: Dict[str, Any] = {
+                    "country": country,
+                    "week": week_str,
+                    "window_days": WINDOW_DAYS,
+                }
 
-        # checkpoint after each country
-        save_json(PROGRESS_JSON, {"country_index": i + 1, "week": week_str})
+                for topic_name, topic_query in TOPICS.items():
+                    ckey = cache_key(country, week_str, WINDOW_DAYS, topic_name)
 
-        if processed_this_run >= CHUNK_SIZE:
-            print(f"\nChunk complete: {processed_this_run} countries. Run again to resume.")
-            return
+                    if ckey in cache:
+                        count = int(cache[ckey])
+                    else:
+                        count = fetch_country_topic_count(session, country, topic_query, start, end)
+                        cache[ckey] = int(count)
+                        save_json(CACHE_JSON, cache)  # Ctrl+C safe
 
-    print("\nAll countries done.")
+                    row[f"gdelt_{topic_name}_count_{WINDOW_DAYS}d"] = int(count)
+                    print(f"  {topic_name}: {count}")
+
+                append_row(row)
+
+                done[dkey] = True
+                save_json(DONE_JSON, done)
+
+            processed_this_run += 1
+
+            # checkpoint after each work unit (week-country)
+            save_json(PROGRESS_JSON, {"week_index": w_i, "country_index": c_i + 1})
+
+            if processed_this_run >= CHUNK_SIZE:
+                print(f"\nChunk complete: {processed_this_run} work units. Run again to resume.")
+                return
+
+        # Finished all countries for this week -> advance to next week
+        start_country_idx = 0
+        save_json(PROGRESS_JSON, {"week_index": w_i + 1, "country_index": 0})
+
+    print("\nAll weeks done.")
 
 
 if __name__ == "__main__":
