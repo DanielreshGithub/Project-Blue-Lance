@@ -1,5 +1,5 @@
 # Project-Blue-Lance
-A Human-in-the-Loop Risk Modeling Framework for Civilian Harm Mitigation
+A Human-in-the-Loop Risk Modeling Framework for Civilian Harm Mitigation (Under Construction)
 
 
 # Project Blue Lance
