@@ -35,7 +35,7 @@ CACHE_JSON = INTERIM / "gdelt_country_cache.json"
 
 # ---- Tuning knobs ----
 MIN_SECONDS_BETWEEN_REQUESTS = 5.2   # bump to 6.0 if you still hit 429
-CHUNK_SIZE = 25                      # work units per run (week-country pairs)
+CHUNK_SIZE = 500                     # work units per run (week-country pairs)
 WINDOW_DAYS = 30                     # rolling window length ending at each week_end
 NUM_WEEKS = 8                       # how many most-recent ACLED weeks to ingest
 MAX_RETRIES = 6
