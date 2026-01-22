@@ -17,6 +17,11 @@ data/processed/*
 data/external/*
 !data/**/.gitkeep
 
+# Sample
+
+!data/sample/
+!data/sample/**
+
 # generated artifacts
 artifacts/
 data/downloads/
