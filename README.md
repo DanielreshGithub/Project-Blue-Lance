@@ -125,14 +125,22 @@ install.packages(c("shiny", "leaflet", "bslib", "dplyr", "htmltools", "arrow"))
 python src/bluelance/run_pipeline.py
 
 Or step by step:
-python src/bluelance/sync_raw.py
-python src/bluelance/ingest.py
-python src/bluelance/clean.py
-python src/bluelance/features.py
-python src/bluelance/gdeltingest.py
-python src/bluelance/feature_merge.py
-python src/bluelance/train.py
-python src/bluelance/predict.py
+
+-python src/bluelance/sync_raw.py
+
+-python src/bluelance/ingest.py
+
+-python src/bluelance/clean.py
+
+-python src/bluelance/features.py
+
+-python src/bluelance/gdeltingest.py
+
+-python src/bluelance/feature_merge.py
+
+-python src/bluelance/train.py
+
+-python src/bluelance/predict.py
 
 Launching the Map:
 R -e "shiny::runApp('apps/risk_map_app', launch.browser=TRUE)"
