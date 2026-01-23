@@ -1,229 +1,171 @@
-# Project-Blue-Lance
-A Human-in-the-Loop Risk Modeling Framework for Civilian Harm Mitigation (Under Construction)
+# ⚡ Project Blue Lance  
+### A Human-in-the-Loop Global Risk Modeling System for Civilian Harm Forecasting
 
+Project **Blue Lance** is a global, province-level early-warning system designed to forecast **the risk of civilian harm one week ahead**.  
+It combines structured conflict data (ACLED), event-based media signals (GDELT), and machine-learning models to produce **actionable risk forecasts** that can be explored through an interactive global map.
 
-# Project Blue Lance
-
-## Overview
-
-Project Blue Lance is a global, province-level early-warning system for civilian harm. It uses ACLED aggregated conflict data to predict the **risk that a given region will experience civilian fatalities next week**. The model is designed for humanitarian risk analysis, conflict monitoring, and escalation detection.
-
-The pipeline ingests historical conflict data, aggregates it by week and region, engineers temporal features, trains a machine‑learning model, and produces weekly risk forecasts (none / low / medium / high).
+This project is research-oriented and humanitarian in scope. It is **not** a targeting system.
 
 ---
 
-## What Blue Lance Predicts
+## What Blue Lance Does
 
-For every `(country, admin1, week)` the system predicts the **severity of civilian harm in the following week**, classified into:
+For every `(country, admin1, week)` combination, Blue Lance predicts the **likelihood and severity of civilian harm in the following week**.
 
-| Label  | Meaning             | Fatalities next week |
-| ------ | ------------------- | -------------------- |
-| none   | No civilian deaths  | 0                    |
-| low    | Small‑scale harm    | 1–5                  |
-| medium | Sustained violence  | 6–20                 |
-| high   | Major civilian harm | 21+                  |
+### Severity Labels
 
-The model does not predict who will win a conflict or where battles will occur — it forecasts **risk of civilian harm based on escalation patterns**.
+| Label  | Meaning              | Fatalities next week |
+|------|----------------------|---------------------|
+| none | No civilian harm     | 0                   |
+| low  | Isolated incidents   | 1–5                 |
+| medium | Sustained violence | 6–20                |
+| high | Major civilian harm  | 21+                 |
 
----
-
-## Data Source
-
-Blue Lance uses **ACLED aggregated weekly data** for the following regions:
-
-* Africa
-* Asia‑Pacific
-* Europe & Central Asia
-* Latin America & Caribbean
-* Middle East
-* US & Canada
-
-These are downloaded as XLSX files and combined into a single global dataset.
+In addition to the multi-class forecast, the system also produces a **binary risk flag** identifying **HIGH-risk regions** for operational monitoring.
 
 ---
 
-## Pipeline Architecture
+## Data Sources
 
-```
+### ACLED (Primary)
+- Aggregated weekly conflict data
+- Admin1 (province/state) resolution
+- Global coverage across:
+  - Africa
+  - Asia-Pacific
+  - Europe & Central Asia
+  - Latin America & Caribbean
+  - Middle East
+  - United States & Canada
+
+### GDELT (Supplementary)
+- Global event and media reporting signals
+- Aggregated into rolling 30-day windows
+- Used as leading indicators for escalation dynamics
+
+---
+
+## System Architecture
+---
 ACLED XLSX files
-        ↓
-ingest.py   → data/interim/acled_global_weekly_raw.csv
-        ↓
-clean.py    → data/processed/acled_global_weekly_clean.csv
-        ↓
-features.py → data/processed/acled_global_weekly_features.csv
-        ↓
-train.py    → artifacts/rf_severity_model_global.joblib
-        ↓
-predict.py  → reports/latest_risk_predictions_global.csv
-```
+↓
+sync_raw.py        (download / sync)
+↓
+ingest.py          → data/interim/
+↓
+clean.py           → data/processed/
+↓
+features.py        → ACLED weekly features
+↓
+gdeltingest.py     → GDELT country-week features
+↓
+feature_merge.py   → ACLED + GDELT merged dataset
+↓
+train.py           → LightGBM models
+↓
+predict.py         → Weekly forecasts
+↓
+Shiny App          → Interactive global risk map
 
-Each step is modular and can be rerun independently.
+----
 
-
-
-## Running the entire Pipeline
-
-To execute everything from raw data to the predictions simply run
-
-python src/bluelance/run_pipeline.py
----
-
-## 1. Ingestion (`ingest.py`)
-
-Reads all ACLED aggregated XLSX files in `data/raw/`, standardizes column names, and merges them into one global weekly dataset.
-
-Output:
-
-```
-data/interim/acled_global_weekly_raw.csv
-```
+All steps are modular and reproducible.
 
 ---
 
-## 2. Cleaning (`clean.py`)
+## Machine Learning Models
 
-Cleans and normalizes the global raw file:
+### 1. Severity Classification (Multi-Class)
+- Model: **LightGBM**
+- Target: `severity_band_next_week` (0–3)
+- Time-aware train/test split (by week)
+- Purpose: analytical understanding of escalation intensity
 
-* standardizes column names
-* parses week into a datetime
-* removes malformed rows
-* keeps only relevant columns
+### 2. Risk Flag Model (Binary)
+- Target: `HIGH risk` vs `no risk`
+- Optimized for:
+  - High recall on severe events
+  - Strong ROC-AUC and PR-AUC
+- Purpose: operational early-warning
 
-Output:
-
-```
-data/processed/acled_global_weekly_clean.csv
-```
-
----
-
-## 3. Feature Engineering (`features.py`)
-
-Transforms weekly data into model‑ready features:
-
-For each `(country, admin1, week)` it computes:
-
-* `total_events`
-* `total_fatalities`
-* `population_exposure`
-* `events_4w_sum` (past 4‑week event total)
-* `fatalities_4w_sum` (past 4‑week fatalities)
-
-It also builds the target variable:
-
-* `fatalities_next_week`
-* `severity_label_next_week`
-* `severity_band_next_week` (0–3)
-
-Output:
-
-```
-data/processed/acled_global_weekly_features.csv
-```
+Typical performance (8-week window):
+- Accuracy ≈ **90–96%**
+- ROC-AUC ≈ **0.95**
 
 ---
 
-## 4. Model Training (`train.py`)
+## Interactive Risk Map
 
-Trains a Random Forest classifier on global data.
+Blue Lance includes a **fully interactive Shiny application** that visualizes weekly forecasts globally at the admin1 level.
 
-Features:
+### Features
+- Dark-mode global map
+- Color-coded risk markers (none / low / medium / high)
+- Week slider (time navigation)
+- Search by country or province
+- High-risk filtering
+- Ranked “Top Risk Regions” panel
+- Click-to-zoom interactions
 
-* total_events
-* total_fatalities
-* population_exposure
-* events_4w_sum
-* fatalities_4w_sum
-
-Target:
-
-* severity_band_next_week
-
-Uses time‑based split (old → train, recent → test) to simulate forecasting.
-
-Output:
-
-```
-artifacts/rf_severity_model_global.joblib
-```
+The UI is inspired by operational dashboards (e.g. electricity-maps-style layouts).
 
 ---
 
-## 5. Prediction (`predict.py`)
+## Running the Project
 
-Uses the trained global model to forecast **next‑week risk** for the **most recent week** in the dataset.
-
-Produces:
-
-```
-reports/latest_risk_predictions_global.csv
-```
-
-Each row contains:
-
-* country
-* admin1
-* input week
-* predicted severity label
-* confidence score
-
-This file is what you would visualize on a map or dashboard.
-
----
-
-## What This System Is
-
-Blue Lance is a:
-
-* humanitarian risk model
-* conflict escalation detector
-* civilian harm early‑warning system
-
-It is designed to answer:
-
-> "Where in the world is civilian harm most likely to spike next week?"
-
----
-
-## What This System Is NOT
-
-Blue Lance is **not**:
-
-* a targeting tool
-* a military planning system
-* a strike optimization engine
-
-It forecasts **risk**, not actions.
-
----
-
-## How to Run
-
+### 1. Install dependencies
+Python (recommended via virtual environment):
 ```bash
-
-#0. Syncing ACLED files
-python src/bluelance/sync_raw.py
-
-# 1. Combine regional ACLED files
-python src/bluelance/ingest.py
-
-# 2. Clean
-python src/bluelance/clean.py
-
-# 3. Build features
-python src/bluelance/features.py
-
-# 4. Train global model
-python src/bluelance/train.py
-
-# 5. Predict next week
-python src/bluelance/predict.py
-```
+pip install -r requirements.txt
+install.packages(c("shiny", "leaflet", "bslib", "dplyr", "htmltools", "arrow"))
 
 ---
+
+## Execution
+python src/bluelance/run_pipeline.py
+
+Or step by step:
+python src/bluelance/sync_raw.py
+python src/bluelance/ingest.py
+python src/bluelance/clean.py
+python src/bluelance/features.py
+python src/bluelance/gdeltingest.py
+python src/bluelance/feature_merge.py
+python src/bluelance/train.py
+python src/bluelance/predict.py
+
+Launching the Map:
+R -e "shiny::runApp('apps/risk_map_app', launch.browser=TRUE)"
+---
+
+## Outputs
+Path
+Description
+data/processed/
+Cleaned and feature-engineered datasets
+reports/
+Weekly predictions and visualization inputs
+artifacts/
+Trained LightGBM models
+apps/risk_map_app/
+Interactive Shiny map
+
+Large datasets are stored as Parquet for efficiency and are not committed to Git.
+---
+
+## Status
+
+Active development — core system complete.
+
+Future directions include:
+	•	Longer temporal windows
+	•	Model calibration & interpretability
+	•	External validation
+	•	Deployment options
 
 ## License
+
+
 
 For academic, humanitarian, and research use only.
 
