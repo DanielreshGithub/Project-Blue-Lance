@@ -115,7 +115,7 @@ The UI is inspired by operational dashboards (e.g. electricity-maps-style layout
 
 ### 1. Install dependencies
 Python (recommended via virtual environment):
-```bash
+bash
 pip install -r requirements.txt
 install.packages(c("shiny", "leaflet", "bslib", "dplyr", "htmltools", "arrow"))
 
@@ -165,7 +165,4 @@ Future directions include:
 
 ## License
 
-
-
-For academic, humanitarian, and research use only.
-
+This project is licensed under the MIT License, allowing you to modify, distribute, and use the code with proper attribution to the original creators. 
