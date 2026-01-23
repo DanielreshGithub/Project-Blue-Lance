@@ -243,11 +243,15 @@ server <- function(input, output, session) {
              ifelse(data$severity == "low", 6, 4)))
     
     # Popups
-    popups <- paste0(
-      "<b>", data$country, "</b><br>",
-      data$admin1, "<br>",
-      "<b>Risk:</b> ", toupper(data$severity)
-    )
+    # Update popup text around line 235:
+ popups <- paste0(
+  "<b>", data$country, "</b><br>", # nolint
+  data$admin1, "<br>",
+  "<b>Risk:</b> ", toupper(data$severity),
+  if("confidence" %in% names(data)) 
+    paste0("<br><b>Confidence:</b> ", round(data$confidence * 100), "%") 
+  else ""
+)
     
     # Update map
     leafletProxy("map") %>%
