@@ -3,34 +3,30 @@ library(bslib)
 library(dplyr)
 library(leaflet)
 library(htmltools)
+library(arrow)
 
 # ===== SETUP =====
 APP_DIR <- normalizePath(getwd())
 PROJECT_ROOT <- normalizePath(file.path(APP_DIR, "..", ".."))
-DATA_PATH <- file.path(PROJECT_ROOT, "reports", "acled_gdelt_admin1_time_series_8w.parquet")
+
+DATA_MAIN <- file.path(PROJECT_ROOT, "reports", "acled_gdelt_admin1_time_series_8w.parquet")
+DATA_DEMO <- file.path(PROJECT_ROOT, "reports", "demo_acled_gdelt_admin1_time_series_8w.parquet")
 CENTROIDS_PATH <- file.path(PROJECT_ROOT, "data", "processed", "acled_global_weekly_features.csv")
+
+pick_data_path <- function() {
+  if (file.exists(DATA_MAIN) && file.info(DATA_MAIN)$size > 0) return(DATA_MAIN)
+  if (file.exists(DATA_DEMO) && file.info(DATA_DEMO)$size > 0) return(DATA_DEMO)
+  return(NA_character_)
+}
 
 # ===== UI =====
 ui <- page_fillable(
   theme = bs_theme(version = 5, bg = "#0a0f1a", fg = "#e4e4e7", primary = "#3b82f6"),
-  
+
   tags$head(tags$style(HTML("
     body { background: #0a0f1a; font-family: 'Inter', sans-serif; overflow: hidden; }
-    #map { 
-      width: 100vw; 
-      height: 100vh; 
-      position: fixed;
-      top: 0;
-      left: 0;
-    }
-    .leaflet-container {
-      background: #0a0f1a;
-    }
-    /* Restrict map panning to prevent seeing empty tiles */
-    .leaflet-container {
-      max-width: 100vw;
-      max-height: 100vh;
-    }
+    #map { width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; }
+    .leaflet-container { background: #0a0f1a; max-width: 100vw; max-height: 100vh; }
     .top-bar {
       position: fixed; top: 0; left: 0; right: 0; height: 56px;
       background: rgba(10, 15, 26, 0.9); backdrop-filter: blur(20px);
@@ -74,188 +70,201 @@ ui <- page_fillable(
     .legend-item { display: flex; align-items: center; gap: 6px; }
     .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
     .legend-label { font-size: 12px; color: #ccc; }
-  "))),
-  
+  "))),  
+
   div(class = "top-bar",
-    div(class = "app-title", "⚡ Blue Lance Risk Map"),
-    textInput("search", NULL, "", placeholder = "Search location...", width = "200px"),
-    checkboxInput("only_high", "Show only HIGH risk", FALSE)
+      div(class = "app-title", "⚡ Blue Lance Risk Map"),
+      textInput("search", NULL, "", placeholder = "Search location...", width = "200px"),
+      checkboxInput("only_high", "Show only HIGH risk", FALSE)
   ),
-  
+
   leafletOutput("map", width = "100%", height = "100%"),
-  
+
   div(class = "side-panel",
-    div(class = "stats",
-      div(class = "stat",
-        div(class = "stat-label", "WEEK"),
-        div(class = "stat-value", textOutput("stat_week", inline = TRUE))
+      div(class = "stats",
+          div(class = "stat",
+              div(class = "stat-label", "WEEK"),
+              div(class = "stat-value", textOutput("stat_week", inline = TRUE))
+          ),
+          div(class = "stat",
+              div(class = "stat-label", "REGIONS"),
+              div(class = "stat-value", textOutput("stat_regions", inline = TRUE))
+          ),
+          div(class = "stat",
+              div(class = "stat-label", "HIGH RISK"),
+              div(class = "stat-value", textOutput("stat_high", inline = TRUE))
+          ),
+          div(class = "stat",
+              div(class = "stat-label", "TOTAL RISK"),
+              div(class = "stat-value", textOutput("stat_total", inline = TRUE))
+          )
       ),
-      div(class = "stat",
-        div(class = "stat-label", "REGIONS"),
-        div(class = "stat-value", textOutput("stat_regions", inline = TRUE))
-      ),
-      div(class = "stat",
-        div(class = "stat-label", "HIGH RISK"),
-        div(class = "stat-value", textOutput("stat_high", inline = TRUE))
-      ),
-      div(class = "stat",
-        div(class = "stat-label", "TOTAL RISK"),
-        div(class = "stat-value", textOutput("stat_total", inline = TRUE))
-      )
-    ),
-    
-    sliderInput("week", "Select Week", min = 1, max = 8, value = 8, width = "100%"),
-    
-    tags$div(style = "font-size: 12px; font-weight: 600; color: #999; margin: 16px 0 8px;", "TOP RISKS"),
-    uiOutput("risk_list")
+
+      sliderInput("week", "Select Week", min = 1, max = 8, value = 8, width = "100%"),
+
+      tags$div(style = "font-size: 12px; font-weight: 600; color: #999; margin: 16px 0 8px;", "TOP RISKS"),
+      uiOutput("risk_list")
   ),
-  
+
   div(class = "legend",
-    div(class = "legend-title", "RISK SEVERITY"),
-    div(class = "legend-items",
-      div(class = "legend-item",
-        div(class = "legend-dot", style = "background: #52525b;"),
-        span(class = "legend-label", "None")
-      ),
-      div(class = "legend-item",
-        div(class = "legend-dot", style = "background: #3b82f6;"),
-        span(class = "legend-label", "Low")
-      ),
-      div(class = "legend-item",
-        div(class = "legend-dot", style = "background: #f59e0b;"),
-        span(class = "legend-label", "Medium")
-      ),
-      div(class = "legend-item",
-        div(class = "legend-dot", style = "background: #ef4444;"),
-        span(class = "legend-label", "High")
+      div(class = "legend-title", "RISK SEVERITY"),
+      div(class = "legend-items",
+          div(class = "legend-item",
+              div(class = "legend-dot", style = "background: #52525b;"),
+              span(class = "legend-label", "None")
+          ),
+          div(class = "legend-item",
+              div(class = "legend-dot", style = "background: #3b82f6;"),
+              span(class = "legend-label", "Low")
+          ),
+          div(class = "legend-item",
+              div(class = "legend-dot", style = "background: #f59e0b;"),
+              span(class = "legend-label", "Medium")
+          ),
+          div(class = "legend-item",
+              div(class = "legend-dot", style = "background: #ef4444;"),
+              span(class = "legend-label", "High")
+          )
       )
-    )
   )
 )
 
 # ===== SERVER =====
 server <- function(input, output, session) {
-  
-  # Load data
-  message("Loading data...")
-  df <- arrow::read_parquet(DATA_PATH)
-  df <- as.data.frame(df)
-  
-  # Clean data
-  df$week <- as.Date(df$week)
-  df$country <- trimws(toupper(df$country))
-  df$admin1 <- trimws(toupper(df$admin1))
-  
-  # Get severity from existing column
-  if ("severity_label_next_week" %in% names(df)) {
-    df$severity <- tolower(trimws(df$severity_label_next_week))
+
+  # ---- Load data (main -> demo fallback) ----
+  data_path <- pick_data_path()
+  if (is.na(data_path)) {
+    message("❌ No dataset found.")
+    message("Expected one of:")
+    message(" - ", DATA_MAIN)
+    message(" - ", DATA_DEMO)
+    showNotification(
+      "No dataset found. Create demo data (reports/demo_...) or run your pipeline to generate reports/*.parquet",
+      type = "error", duration = NULL
+    )
+    df <- data.frame()
   } else {
-    df$severity <- "none"
+    message("Loading data from: ", data_path)
+    df <- as.data.frame(arrow::read_parquet(data_path))
   }
-  
-  # Load centroids
-  message("Loading centroids...")
-  cent <- read.csv(CENTROIDS_PATH, stringsAsFactors = FALSE)
-  cent$country <- trimws(toupper(cent$country))
-  cent$admin1 <- trimws(toupper(cent$admin1))
-  cent$lat <- as.numeric(cent$centroid_latitude)
-  cent$lon <- as.numeric(cent$centroid_longitude)
-  
-  # Keep only unique admin1 with coordinates
-  cent <- cent[!is.na(cent$lat) & !is.na(cent$lon), ]
-  cent <- cent[!duplicated(paste(cent$country, cent$admin1)), ]
-  cent <- cent[c("country", "admin1", "lat", "lon")]
-  
-  message("Merging coordinates...")
-  df <- merge(df, cent, by = c("country", "admin1"), all.x = TRUE)
-  
-  # Remove rows without coordinates
-  df <- df[!is.na(df$lat) & !is.na(df$lon), ]
-  
-  message("Data loaded: ", nrow(df), " rows with coordinates")
-  
-  # Get weeks
-  weeks <- sort(unique(df$week))
-  
+
+  # If no data, still render base map and safe outputs
+  if (nrow(df) == 0) {
+    weeks <- as.Date(character(0))
+  } else {
+    # ---- Clean core columns ----
+    df$week <- as.Date(df$week)
+    df$country <- trimws(toupper(df$country))
+    df$admin1 <- trimws(toupper(df$admin1))
+
+    # Severity
+    if ("severity_label_next_week" %in% names(df)) {
+      df$severity <- tolower(trimws(df$severity_label_next_week))
+    } else {
+      df$severity <- "none"
+    }
+
+    # ---- Coordinates: use parquet lat/lon if available, else merge centroids ----
+    has_latlon <- ("lat" %in% names(df)) && ("lon" %in% names(df)) &&
+      any(!is.na(df$lat)) && any(!is.na(df$lon))
+
+    if (!has_latlon && file.exists(CENTROIDS_PATH)) {
+      message("Lat/lon missing -> loading centroids: ", CENTROIDS_PATH)
+      cent <- read.csv(CENTROIDS_PATH, stringsAsFactors = FALSE)
+
+      cent$country <- trimws(toupper(cent$country))
+      cent$admin1 <- trimws(toupper(cent$admin1))
+      cent$lat <- as.numeric(cent$centroid_latitude)
+      cent$lon <- as.numeric(cent$centroid_longitude)
+
+      cent <- cent[!is.na(cent$lat) & !is.na(cent$lon), ]
+      cent <- cent[!duplicated(paste(cent$country, cent$admin1)), ]
+      cent <- cent[c("country", "admin1", "lat", "lon")]
+
+      df <- merge(df, cent, by = c("country", "admin1"), all.x = TRUE)
+    }
+
+    # Clean coords + drop missing
+    if ("lat" %in% names(df)) df$lat <- as.numeric(df$lat)
+    if ("lon" %in% names(df)) df$lon <- as.numeric(df$lon)
+    df <- df[!is.na(df$lat) & !is.na(df$lon), ]
+
+    message("Data loaded: ", nrow(df), " rows with coordinates")
+
+    weeks <- sort(unique(df$week))
+  }
+
   observe({
-    updateSliderInput(session, "week", min = 1, max = length(weeks), value = length(weeks))
+    if (length(weeks) > 0) {
+      updateSliderInput(session, "week", min = 1, max = length(weeks), value = length(weeks))
+    } else {
+      updateSliderInput(session, "week", min = 1, max = 1, value = 1)
+    }
   })
-  
+
   # Current data
   current_data <- reactive({
+    if (length(weeks) == 0 || nrow(df) == 0) return(df[0, ])
     selected_week <- weeks[input$week]
     data <- df[df$week == selected_week, ]
-    
-    # Search filter
+
     if (nzchar(trimws(input$search))) {
-      search_term <- toupper(input$search)
+      search_term <- toupper(trimws(input$search))
       data <- data[grepl(search_term, data$country) | grepl(search_term, data$admin1), ]
     }
-    
-    # High risk filter
-    if (input$only_high) {
+
+    if (isTRUE(input$only_high)) {
       data <- data[data$severity == "high", ]
     }
-    
-    return(data)
+
+    data
   })
-  
+
   # Stats
-  output$stat_week <- renderText({ format(weeks[input$week], "%b %d") })
+  output$stat_week <- renderText({
+    if (length(weeks) == 0) return("—")
+    format(weeks[input$week], "%b %d")
+  })
   output$stat_regions <- renderText({ nrow(current_data()) })
   output$stat_high <- renderText({ sum(current_data()$severity == "high", na.rm = TRUE) })
   output$stat_total <- renderText({ sum(current_data()$severity != "none", na.rm = TRUE) })
-  
+
   # Map
   output$map <- renderLeaflet({
     leaflet(options = leafletOptions(
       minZoom = 2,
       maxZoom = 12,
-      worldCopyJump = FALSE,  # Prevent wrapping
-      maxBounds = list(
-        list(-90, -180),  # Southwest corner
-        list(90, 180)     # Northeast corner
-      ),
-      maxBoundsViscosity = 1.0  # Make bounds sticky
+      worldCopyJump = FALSE,
+      maxBounds = list(list(-90, -180), list(90, 180)),
+      maxBoundsViscosity = 1.0
     )) %>%
       addProviderTiles(providers$CartoDB.DarkMatter) %>%
       setView(lng = 20, lat = 20, zoom = 2) %>%
       setMaxBounds(lng1 = -180, lat1 = -90, lng2 = 180, lat2 = 90)
   })
-  
-  # Update map
+
+  # Update map markers
   observe({
     data <- current_data()
-    
-    if (nrow(data) == 0) {
-      leafletProxy("map") %>% clearMarkers()
-      return()
-    }
-    
-    # Colors
+    leafletProxy("map") %>% clearMarkers()
+    if (nrow(data) == 0) return()
+
     colors <- ifelse(data$severity == "high", "#ef4444",
               ifelse(data$severity == "medium", "#f59e0b",
               ifelse(data$severity == "low", "#3b82f6", "#52525b")))
-    
-    # Sizes
+
     sizes <- ifelse(data$severity == "high", 10,
              ifelse(data$severity == "medium", 8,
              ifelse(data$severity == "low", 6, 4)))
-    
-    # Popups
-    # Update popup text around line 235:
- popups <- paste0(
-  "<b>", data$country, "</b><br>", # nolint
-  data$admin1, "<br>",
-  "<b>Risk:</b> ", toupper(data$severity),
-  if("confidence" %in% names(data)) 
-    paste0("<br><b>Confidence:</b> ", round(data$confidence * 100), "%") 
-  else ""
-)
-    
-    # Update map
+
+    popups <- paste0(
+      "<b>", data$country, "</b><br>",
+      data$admin1, "<br>",
+      "<b>Risk:</b> ", toupper(data$severity)
+    )
+
     leafletProxy("map") %>%
-      clearMarkers() %>%
       addCircleMarkers(
         lng = data$lon,
         lat = data$lat,
@@ -268,33 +277,28 @@ server <- function(input, output, session) {
         layerId = paste(data$country, data$admin1, sep = "|")
       )
   })
-  
+
   # Risk list
   output$risk_list <- renderUI({
     data <- current_data()
-    
     if (nrow(data) == 0) {
       return(div(style = "color: #999; font-size: 13px;", "No regions found"))
     }
-    
-    # Rank by severity
+
     rank <- c("none" = 0, "low" = 1, "medium" = 2, "high" = 3)
     data$rank <- rank[data$severity]
-    
-    # Sort
     data <- data[order(-data$rank), ]
     top_10 <- head(data, 10)
-    
-    # Create list
+
     items <- lapply(seq_len(nrow(top_10)), function(i) {
       row <- top_10[i, ]
       severity <- row$severity
-      
+
       badge_class <- ""
       if (severity == "high") badge_class <- "high"
       else if (severity == "medium") badge_class <- "medium"
       else if (severity == "low") badge_class <- "low"
-      
+
       div(
         class = "risk-item",
         onclick = sprintf(
@@ -302,26 +306,24 @@ server <- function(input, output, session) {
           row$country, row$admin1
         ),
         div(class = "risk-location", paste0(row$country, " — ", row$admin1)),
-        if (badge_class != "") {
-          span(class = paste("risk-badge", badge_class), toupper(severity))
-        }
+        if (badge_class != "") span(class = paste("risk-badge", badge_class), toupper(severity))
       )
     })
-    
-    return(tagList(items))
+
+    tagList(items)
   })
-  
+
   # Zoom to location
   observeEvent(input$zoom_to, {
     parts <- strsplit(input$zoom_to, "\\|")[[1]]
     if (length(parts) != 2) return()
-    
+
     country <- parts[1]
     admin1 <- parts[2]
-    
+
     data <- current_data()
     row <- data[data$country == country & data$admin1 == admin1, ]
-    
+
     if (nrow(row) > 0) {
       leafletProxy("map") %>%
         setView(lng = row$lon[1], lat = row$lat[1], zoom = 6)

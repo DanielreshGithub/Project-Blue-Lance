@@ -34,3 +34,6 @@ reports/*.jsonl
 reports/latest_*
 reports/*_files/
 reports/figures/
+
+.RData
+.Rhistory
