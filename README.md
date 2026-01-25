@@ -1,4 +1,4 @@
-⚡ Project Blue Lance
+⚡ Project Blue Lance [screenshot.png]
 
 A Human-in-the-Loop Global Risk Modeling System for Civilian Harm Forecasting
 
