@@ -1,4 +1,3 @@
-
 # Python
 .venv/
 __pycache__/
@@ -18,12 +17,20 @@ data/external/*
 !data/**/.gitkeep
 
 # Sample
-
 !data/sample/
 !data/sample/**
 
-# generated artifacts
+# Generated artifacts
 artifacts/
 data/downloads/
-reports/
 tmp
+
+# Reports are generated (keep demo only)
+reports/*.parquet
+!reports/demo_acled_gdelt_admin1_time_series_8w.parquet
+
+reports/*.json
+reports/*.jsonl
+reports/latest_*
+reports/*_files/
+reports/figures/
