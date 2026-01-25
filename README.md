@@ -1,7 +1,7 @@
-⚡ Project Blue Lance 
+# ⚡ Project Blue Lance
 
 <p align="center">
-  <img src="assets/screenshot.png" width="900">
+  <img src="screenshot.png" width="900">
 </p>
 
 A Human-in-the-Loop Global Risk Modeling System for Civilian Harm Forecasting
