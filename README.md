@@ -140,6 +140,7 @@ Future directions
 	•	Model calibration & interpretability
 	•	External validation
 	•	Deployment options
+	? Fully Interactive Map perhaps at some point
 
 ⸻
 
